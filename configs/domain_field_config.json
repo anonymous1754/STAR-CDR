@@ -1,0 +1,32 @@
+{
+    "game": {
+        "user": {"continue": 1, "concrete": 1},
+        "item": {"continue": 2, "concrete": 2},
+        "sequence_user": 1,
+        "sequence_item": 1
+    },
+    "video": {
+        "user": {"continue": 7, "concrete": 8},
+        "item": {"continue": 7, "concrete": 8},
+        "sequence_user": 4,
+        "sequence_item": 4
+    },
+    "music": {
+        "user": {"continue": 2, "concrete": 1},
+        "item": {"continue": 1, "concrete": 1},
+        "sequence_user": 1,
+        "sequence_item": 1
+    },
+    "theme": {
+        "user": {"continue": 1, "concrete": 1},
+        "item": {"continue": 1, "concrete": 1},
+        "sequence_user": 0,
+        "sequence_item": 0
+    },
+    "read": {
+        "user": {"continue": 2, "concrete": 2},
+        "item": {"continue": 2, "concrete": 1},
+        "sequence_user": 1,
+        "sequence_item": 1
+    }
+}
