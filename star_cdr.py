@@ -14,6 +14,7 @@ import torch.nn.functional as F
 
 class MLP(nn.Module):
     """通用多层感知机模块：dims = [in_dim, h1, h2, ..., out_dim]"""
+
     def __init__(self,
                  dims: List[int],
                  activation: str = "relu",
@@ -23,7 +24,7 @@ class MLP(nn.Module):
         layers = []
         act_layer = nn.ReLU if activation == "relu" else nn.GELU
         for i in range(len(dims) - 1):
-            layers.append(nn.Linear(dims[i], dims[i+1]))
+            layers.append(nn.Linear(dims[i], dims[i + 1]))
             if i < len(dims) - 2 or last_activation:
                 layers.append(act_layer())
             if dropout > 0 and i < len(dims) - 2:
@@ -36,6 +37,7 @@ class MLP(nn.Module):
 
 class ScaledDotProductAttention(nn.Module):
     """简化版 Cross-Attention：单头，Q: [B, Lq, D], K/V: [B, Lk, D]"""
+
     def __init__(self, d_model: int):
         super().__init__()
         self.scale = d_model ** 0.5
@@ -56,12 +58,13 @@ class CrossNetV2(nn.Module):
     DCNv2 风格的 Cross Network
     使用低秩矩阵分解来提高效率
     """
+
     def __init__(self, input_dim: int, num_layers: int = 2, low_rank: Optional[int] = None):
         super().__init__()
         self.num_layers = num_layers
         if low_rank is None:
             low_rank = input_dim // 4
-        
+
         self.cross_layers = nn.ModuleList()
         for _ in range(num_layers):
             # 使用低秩矩阵分解：W = U * V^T
@@ -70,21 +73,21 @@ class CrossNetV2(nn.Module):
                 'V': nn.Linear(low_rank, input_dim, bias=False),
                 'bias': nn.ParameterDict({'b': nn.Parameter(torch.zeros(input_dim))})
             }))
-    
+
     def forward(self, x0: torch.Tensor) -> torch.Tensor:
         """
         x0: [B, D] 初始输入
         返回: [B, D] 经过 cross network 后的输出
         """
         x_i = x0  # [B, D]
-        
+
         for layer in self.cross_layers:
             # x_{i+1} = x_0 * (W * x_i + b) + x_i
             # 使用低秩分解: W = U * V^T
             x_i_transformed = layer['V'](layer['U'](x_i))  # [B, D]
             x_i_transformed = x_i_transformed + layer['bias']['b']  # [B, D]
             x_i = x0 * x_i_transformed + x_i  # [B, D]
-        
+
         return x_i
 
 
@@ -145,18 +148,18 @@ class CDIExtractor(nn.Module):
         device = u.device
 
         # 预处理 shared 序列
-        K_share = self.w_k_share(H_share)       # [B, Ls, Dq]
-        V_share = self.w_v_share(H_share)       # [B, Ls, Dq]
+        K_share = self.w_k_share(H_share)  # [B, Ls, Dq]
+        V_share = self.w_v_share(H_share)  # [B, Ls, Dq]
 
         cdir_dict: Dict[int, torch.Tensor] = {}
-        h_intra_list = []   # 用于对比学习
-        h_share_list = []   # 用于对比学习
+        h_intra_list = []  # 用于对比学习
+        h_share_list = []  # 用于对比学习
 
         for d in range(self.num_domains):
-            h_d = H_intra[d]   # [B, Ld, Dh]
+            h_d = H_intra[d]  # [B, Ld, Dh]
 
             if ctx is not None and d in ctx:
-                c_d = ctx[d]   # [B, Dc]
+                c_d = ctx[d]  # [B, Dc]
             else:
                 # 简单用平均池化作为 C^(d,s)
                 c_d = h_d.mean(dim=1)  # [B, Dh]，可以用 Linear 降维到 ctx_dim，在初始化时统一
@@ -164,21 +167,21 @@ class CDIExtractor(nn.Module):
 
             # 构造 Q^d
             q_input = torch.cat([u, c_d], dim=-1)  # [B, Du+Dc]
-            Q_d = self.w_q(q_input).unsqueeze(1)   # [B,1,Dq]
+            Q_d = self.w_q(q_input).unsqueeze(1)  # [B,1,Dq]
 
             # intra-domain cross attention
             K_intra = self.w_k_intra(h_d)  # [B, Ld, Dq]
             V_intra = self.w_v_intra(h_d)
             h_intra, _ = self.mca_intra(Q_d, K_intra, V_intra)  # [B,1,Dq]
-            h_intra = h_intra.squeeze(1)                        # [B,Dq]
+            h_intra = h_intra.squeeze(1)  # [B,Dq]
 
             # domain-shared cross attention
             h_share, _ = self.mca_share(Q_d, K_share, V_share)  # [B,1,Dq]
-            h_share = h_share.squeeze(1)                        # [B,Dq]
+            h_share = h_share.squeeze(1)  # [B,Dq]
 
             # fuse to CDIR^d
             h_cat = torch.cat([h_intra, h_share], dim=-1)  # [B,2Dq]
-            z_d = self.ffn_cdir(h_cat)                     # [B,Dcdir]
+            z_d = self.ffn_cdir(h_cat)  # [B,Dcdir]
 
             cdir_dict[d] = z_d
             h_intra_list.append(h_intra)
@@ -210,9 +213,9 @@ class CDIExtractor(nn.Module):
         # diag 是与自身的相似度
         # softmax 分母
         exp_all = torch.exp(all_sim)  # [B,D_num,D_num]
-        denom = exp_all.sum(dim=-1)   # [B,D_num]
+        denom = exp_all.sum(dim=-1)  # [B,D_num]
 
-        num = torch.exp(pos_sim)      # [B,D_num]
+        num = torch.exp(pos_sim)  # [B,D_num]
         log_prob = torch.log(num / (denom + 1e-8) + 1e-8)  # [B,D_num]
         L_con = -log_prob.mean()
 
@@ -229,6 +232,7 @@ class CDIRInjector_Gate(nn.Module):
     输入：z_d: [B, Dcdir]
     输出：gate: [B, num_experts]，Sigmoid 后可作为 soft gate 或 mask。
     """
+
     def __init__(self,
                  cdir_dim: int,
                  num_experts: int,
@@ -239,7 +243,7 @@ class CDIRInjector_Gate(nn.Module):
         self.net = MLP([cdir_dim, hidden_dim, num_experts], last_activation=False)
 
     def forward(self, z: torch.Tensor):
-        gate_logits = self.net(z)          # [B, num_experts]
+        gate_logits = self.net(z)  # [B, num_experts]
         gate = torch.sigmoid(gate_logits)  # [B, num_experts]
         return gate
 
@@ -249,6 +253,7 @@ class CDIRInjector_Norm(nn.Module):
     AdaNorm 风格，按 domain 做 masked 归一化 + domain 特定的 gamma / beta 注入。
     gamma,beta 由 CDIR 生成。
     """
+
     def __init__(self,
                  hidden_dim: int,
                  cdir_dim: int,
@@ -281,15 +286,15 @@ class CDIRInjector_Norm(nn.Module):
                 continue
 
             idx = mask.nonzero(as_tuple=False).squeeze(1)  # [Bd]
-            h_d = h[idx]                                   # [Bd, Dh]
-            z_d = cdir_dict[d][idx]                        # [Bd, Dcdir]
+            h_d = h[idx]  # [Bd, Dh]
+            z_d = cdir_dict[d][idx]  # [Bd, Dcdir]
 
             # 计算 gamma,beta
-            gb = self.to_gamma_beta(z_d)                   # [Bd, 2Dh]
-            gamma, beta = gb.chunk(2, dim=-1)              # [Bd, Dh]
+            gb = self.to_gamma_beta(z_d)  # [Bd, 2Dh]
+            gamma, beta = gb.chunk(2, dim=-1)  # [Bd, Dh]
 
             # 按 domain 做归一化
-            mean = h_d.mean(dim=0, keepdim=True)           # [1,Dh]
+            mean = h_d.mean(dim=0, keepdim=True)  # [1,Dh]
             var = h_d.var(dim=0, unbiased=False, keepdim=True)
             h_norm = (h_d - mean) / torch.sqrt(var + self.eps)  # [Bd,Dh]
 
@@ -311,6 +316,7 @@ class MoEExperts(nn.Module):
     - gate: [B, N] in [0,1]
     - 输入 x: [B, Din]，输出 [B, Dout]
     """
+
     def __init__(self,
                  num_experts: int,
                  in_dim: int,
@@ -385,28 +391,28 @@ class CDIRecModel(nn.Module):
             sequence_pooling: 序列特征的pooling方式，"mean" 或 "max"
             important_features: 重要特征列表，用于生成用户向量u
                 - 维度会自动计算，无需手动指定
-        
+
         特征类型说明（4种组合）：
         1. 离散单值特征：在categorical_features中，不在sequence_features中
            - 例如：user_id, item_id
            - 定义：categorical_features={"user_id": 10000}
            - 处理：embedding -> [B, embed_dim]
-        
+
         2. 离散序列特征：在categorical_features中，也在sequence_features中
            - 例如：user_hist_item_ids (用户历史浏览的物品ID序列)
            - 定义：categorical_features={"user_hist_item_ids": 50000}, sequence_features=["user_hist_item_ids"]
            - 处理：embedding -> [B, L, embed_dim] -> pooling -> [B, embed_dim]
-        
+
         3. 连续单值特征：在continuous_features_dim中，不在sequence_features中
            - 例如：user_age, price
            - 定义：continuous_features_dim={"user_age": 1, "price": 1}
            - 处理：直接使用 [B, dim]
-        
+
         4. 连续序列特征：在continuous_features_dim中，也在sequence_features中
            - 例如：user_hist_prices (用户历史浏览的价格序列)
            - 定义：continuous_features_dim={"user_hist_prices": 1}, sequence_features=["user_hist_prices"]
            - 处理：pooling -> [B, dim]
-        
+
         注意：所有特征维度会自动计算，不需要手动指定 dense_input_dim 或 important_features_dim
         """
         super().__init__()
@@ -421,29 +427,29 @@ class CDIRecModel(nn.Module):
         self.num_tasks = num_tasks
         self.image_dim = image_dim
         self.text_dim = text_dim
-        
+
         # 重要特征列表，用于生成用户向量 u
         self.important_features = important_features if important_features is not None else []
-        
+
         # 离散特征配置
         self.categorical_features = categorical_features if categorical_features is not None else {}
         self.categorical_embed_dim = categorical_embed_dim
-        
+
         # 连续特征配置
         self.continuous_features_dim = continuous_features_dim if continuous_features_dim is not None else {}
-        
+
         # 序列特征配置
         self.sequence_features = sequence_features if sequence_features is not None else []
         self.sequence_pooling = sequence_pooling
-        
+
         # 0. 离散特征的 Embedding 层
         self.categorical_embeddings = nn.ModuleDict()
         for feat_name, vocab_size in self.categorical_features.items():
             self.categorical_embeddings[feat_name] = nn.Embedding(vocab_size, categorical_embed_dim)
-        
+
         # 自动计算总的输入维度
         total_input_dim = self._calculate_total_input_dim()
-        
+
         # 1. Preprocess: 把所有特征直接concat后投影到 embed_dim
         #    处理流程：
         #    - 连续单值特征：直接拼接
@@ -451,7 +457,7 @@ class CDIRecModel(nn.Module):
         #    - 离散单值特征：embedding后拼接
         #    - 离散序列特征：embedding -> pooling后拼接
         self.preprocess = nn.Linear(total_input_dim, embed_dim)
-        
+
         # 1.5 用户向量生成器（从重要特征生成）
         if len(self.important_features) > 0:
             # 自动计算 important_features 的维度
@@ -492,7 +498,7 @@ class CDIRecModel(nn.Module):
             cdir_dim=cdir_dim,
             num_domains=num_domains
         )
-        
+
         # 3.5 Cross Network (DCNv2)
         self.cross_net = CrossNetV2(
             input_dim=embed_dim,
@@ -550,7 +556,7 @@ class CDIRecModel(nn.Module):
         )
 
         expert_out_dim = expert_hidden_dims[-1]
-        
+
         # 可学习的加权参数 alpha，用于加权求和5个expert的输出
         self.alpha = nn.Parameter(torch.ones(5) / 5.0)  # 初始化为均匀分布
 
@@ -569,46 +575,46 @@ class CDIRecModel(nn.Module):
     # ------------------------
     # 维度计算辅助函数
     # ------------------------
-    
+
     def _calculate_total_input_dim(self) -> int:
         """
         自动计算所有特征concat后的总维度
         """
         total_dim = 0
-        
+
         # 1. 连续单值特征
         for feat_name, feat_dim in self.continuous_features_dim.items():
             if feat_name not in self.sequence_features:
                 total_dim += feat_dim
-        
+
         # 2. 连续序列特征 (pooling后)
         for feat_name in self.sequence_features:
             if feat_name not in self.categorical_features and feat_name in self.continuous_features_dim:
                 total_dim += self.continuous_features_dim[feat_name]
-        
+
         # 3. 离散单值特征 (embedding后)
         for feat_name in self.categorical_features.keys():
             if feat_name not in self.sequence_features:
                 total_dim += self.categorical_embed_dim
-        
+
         # 4. 离散序列特征 (embedding -> pooling后)
         for feat_name in self.sequence_features:
             if feat_name in self.categorical_features:
                 total_dim += self.categorical_embed_dim
-        
+
         return total_dim
-    
+
     def _calculate_important_features_dim(self) -> int:
         """
         自动计算重要特征concat后的维度
         """
         total_dim = 0
-        
+
         for feat_name in self.important_features:
             # 判断特征类型
             is_categorical = feat_name in self.categorical_features
             is_sequence = feat_name in self.sequence_features
-            
+
             if is_categorical:
                 # 离散特征（单值或序列）都embedding后是 categorical_embed_dim
                 total_dim += self.categorical_embed_dim
@@ -620,13 +626,13 @@ class CDIRecModel(nn.Module):
                     f"Feature '{feat_name}' in important_features is not defined in "
                     f"categorical_features or continuous_features_dim"
                 )
-        
+
         return total_dim
-    
+
     # ------------------------
     # feature 处理相关的辅助函数
     # ------------------------
-    
+
     def _pool_sequence_features(self, all_features: Dict[str, torch.Tensor]) -> torch.Tensor:
         """
         对序列特征进行 pooling 并拼接
@@ -637,24 +643,25 @@ class CDIRecModel(nn.Module):
         """
         if len(self.sequence_features) == 0:
             return None
-        
+
         pooled_features = []
         for feat_name in self.sequence_features:
             if feat_name not in all_features:
                 raise KeyError(f"Sequence feature '{feat_name}' not found in all_features.")
-            
+
             seq_feat = all_features[feat_name]  # [B, L] 或 [B, L, D]
-            
+
             # 判断是否是离散序列特征
             if feat_name in self.categorical_features:
                 # 离散序列特征：[B, L] -> embedding -> [B, L, embed_dim] -> pooling -> [B, embed_dim]
                 seq_ids = seq_feat.long()  # [B, L]
                 if seq_ids.dim() != 2:
-                    raise ValueError(f"Discrete sequence feature '{feat_name}' should be 2D [B, L], got {seq_ids.dim()}D")
-                
+                    raise ValueError(
+                        f"Discrete sequence feature '{feat_name}' should be 2D [B, L], got {seq_ids.dim()}D")
+
                 # 对序列中的每个ID进行embedding
                 seq_embeds = self.categorical_embeddings[feat_name](seq_ids)  # [B, L, embed_dim]
-                
+
                 # Pooling over sequence dimension
                 if self.sequence_pooling == "mean":
                     pooled = seq_embeds.mean(dim=1)  # [B, embed_dim]
@@ -666,7 +673,7 @@ class CDIRecModel(nn.Module):
                 # 连续序列特征：[B, L, D] 或 [B, L] -> pooling -> [B, D] 或 [B]
                 if seq_feat.dim() == 2:
                     seq_feat = seq_feat.unsqueeze(-1)  # [B, L] -> [B, L, 1]
-                
+
                 # Pooling over sequence dimension
                 if self.sequence_pooling == "mean":
                     pooled = seq_feat.mean(dim=1)  # [B, D]
@@ -674,11 +681,11 @@ class CDIRecModel(nn.Module):
                     pooled = seq_feat.max(dim=1)[0]  # [B, D]
                 else:
                     raise ValueError(f"Unsupported pooling method: {self.sequence_pooling}")
-            
+
             pooled_features.append(pooled)
-        
+
         return torch.cat(pooled_features, dim=-1)  # [B, total_seq_dim]
-    
+
     def _embed_categorical_features(self, all_features: Dict[str, torch.Tensor]) -> torch.Tensor:
         """
         对单值离散特征进行 embedding 并拼接
@@ -687,29 +694,30 @@ class CDIRecModel(nn.Module):
         """
         if len(self.categorical_features) == 0:
             return None
-        
+
         categorical_embeds = []
         for feat_name in self.categorical_features.keys():
             # 跳过序列离散特征（它们在 _pool_sequence_features 中处理）
             if feat_name in self.sequence_features:
                 continue
-                
+
             if feat_name not in all_features:
                 raise KeyError(f"Categorical feature '{feat_name}' not found in all_features.")
-            
+
             feat_ids = all_features[feat_name].long()  # [B] or [B, 1]
             if feat_ids.dim() == 2:
                 feat_ids = feat_ids.squeeze(-1)  # [B]
             elif feat_ids.dim() > 2:
-                raise ValueError(f"Categorical feature '{feat_name}' should be 1D or 2D for single value, got {feat_ids.dim()}D. "
-                                 f"If it's a sequence feature, add it to sequence_features list.")
-            
+                raise ValueError(
+                    f"Categorical feature '{feat_name}' should be 1D or 2D for single value, got {feat_ids.dim()}D. "
+                    f"If it's a sequence feature, add it to sequence_features list.")
+
             embed = self.categorical_embeddings[feat_name](feat_ids)  # [B, categorical_embed_dim]
             categorical_embeds.append(embed)
-        
+
         if len(categorical_embeds) == 0:
             return None
-            
+
         return torch.cat(categorical_embeds, dim=-1)  # [B, num_categorical_single * categorical_embed_dim]
 
     def _pack_important_features(self, all_features: Dict[str, torch.Tensor]) -> torch.Tensor:
@@ -724,58 +732,58 @@ class CDIRecModel(nn.Module):
         """
         if len(self.important_features) == 0:
             raise ValueError("important_features list is empty!")
-        
+
         important_list = []
         for key in self.important_features:
             if key not in all_features:
                 raise KeyError(f"Important feature '{key}' not found in all_features.")
-            
+
             feat = all_features[key]
-            
+
             # 判断特征类型
             is_categorical = key in self.categorical_features
             is_sequence = key in self.sequence_features
-            
+
             if is_categorical and is_sequence:
                 # 类型1：离散序列特征 [B, L] -> embedding -> [B, L, embed_dim] -> pooling -> [B, embed_dim]
                 seq_ids = feat.long()  # [B, L]
                 seq_embeds = self.categorical_embeddings[key](seq_ids)  # [B, L, embed_dim]
-                
+
                 if self.sequence_pooling == "mean":
                     v = seq_embeds.mean(dim=1)  # [B, embed_dim]
                 elif self.sequence_pooling == "max":
                     v = seq_embeds.max(dim=1)[0]  # [B, embed_dim]
                 else:
                     raise ValueError(f"Unsupported pooling method: {self.sequence_pooling}")
-                    
+
             elif is_categorical and not is_sequence:
                 # 类型2：离散单值特征 [B] -> embedding -> [B, embed_dim]
                 feat_ids = feat.long()  # [B] or [B, 1]
                 if feat_ids.dim() == 2:
                     feat_ids = feat_ids.squeeze(-1)  # [B]
                 v = self.categorical_embeddings[key](feat_ids)  # [B, categorical_embed_dim]
-                
+
             elif not is_categorical and is_sequence:
                 # 类型3：连续序列特征 [B, L, D] 或 [B, L] -> pooling -> [B, D]
                 seq_feat = feat  # [B, L, D] 或 [B, L]
                 if seq_feat.dim() == 2:
                     seq_feat = seq_feat.unsqueeze(-1)  # [B, L, 1]
-                
+
                 if self.sequence_pooling == "mean":
                     v = seq_feat.mean(dim=1)  # [B, D]
                 elif self.sequence_pooling == "max":
                     v = seq_feat.max(dim=1)[0]  # [B, D]
                 else:
                     raise ValueError(f"Unsupported pooling method: {self.sequence_pooling}")
-                    
+
             else:
                 # 类型4：连续单值特征 [B] 或 [B, D] -> 直接使用
                 v = feat
                 if v.dim() == 1:
                     v = v.unsqueeze(-1)  # [B, 1]
-            
+
             important_list.append(v)
-        
+
         important_x = torch.cat(important_list, dim=-1)
         return important_x
 
@@ -805,7 +813,7 @@ class CDIRecModel(nn.Module):
             # 跳过 image 和 text features（这些单独处理）
             if k in ["image_features", "text_features"]:
                 continue
-            
+
             # 连续单值特征
             # v: [B, dim] 或 [B]
             if v.dim() == 1:
@@ -813,13 +821,13 @@ class CDIRecModel(nn.Module):
             # 如果是高维tensor(>=3D)，跳过（应该在sequence_features中定义）
             elif v.dim() >= 3:
                 continue
-            
+
             dense_list.append(v)
-        
+
         if len(dense_list) == 0:
             # 如果没有单值连续特征，返回None
             return None
-        
+
         dense_x = torch.cat(dense_list, dim=-1)
         return dense_x
 
@@ -828,6 +836,7 @@ class CDIRecModel(nn.Module):
         从字典中抽取 click / play / pay 三个 label。
         这里假设 key 以 'is_click', 'is_play', 'is_pay' 开头。
         """
+
         def find_label(prefix: str) -> torch.Tensor:
             for k, v in all_features.items():
                 if k.startswith(prefix):
@@ -840,7 +849,6 @@ class CDIRecModel(nn.Module):
         y_play = find_label("is_play")
         y_pay = find_label("is_pay")
         return y_click, y_play, y_pay
-
 
     # ------------------------
     # forward
@@ -866,35 +874,35 @@ class CDIRecModel(nn.Module):
 
         # 2. 特征预处理（4种特征类型的统一处理）
         feature_parts = []
-        
+
         # 2.1 处理连续单值特征（直接拼接）
         dense_x = self._pack_dense_features(all_features)
         if dense_x is not None:
             feature_parts.append(dense_x.to(device))  # [B, Din_continuous_single]
-        
+
         # 2.2 处理所有序列特征（包括连续序列和离散序列）
         #     - 连续序列特征：直接pooling
         #     - 离散序列特征：embedding -> pooling
         sequence_pooled = self._pool_sequence_features(all_features)
         if sequence_pooled is not None:
             feature_parts.append(sequence_pooled.to(device))  # [B, Din_sequence_pooled]
-        
+
         # 2.3 处理离散单值特征（embedding后拼接）
         categorical_embeds = self._embed_categorical_features(all_features)
         if categorical_embeds is not None:
             feature_parts.append(categorical_embeds.to(device))  # [B, num_cat_single * cat_embed_dim]
-        
+
         # 2.4 拼接所有特征
         # 最终拼接顺序：连续单值 + 序列pooling(连续+离散) + 离散单值embedding
         if len(feature_parts) == 0:
             raise ValueError("No valid features found in all_features!")
-        
+
         all_features_concat = torch.cat(feature_parts, dim=-1)  # [B, total_dim]
 
         # 2.5 统一投影到 embed_dim
         h0 = self.preprocess(all_features_concat)  # [B, De]
         h0 = F.relu(h0)
-        
+
         # 2.5 生成用户向量 u（仅使用重要特征）
         if self.user_vector_generator is not None and len(self.important_features) > 0:
             # 使用指定的重要特征生成用户向量
@@ -929,10 +937,10 @@ class CDIRecModel(nn.Module):
             cdir_dict=cdir_dict,
             domain_ids=domain_ids
         )  # [B,De]
-        
+
         # 5. Cross Network (DCNv2)
         h2 = self.cross_net(h1)  # [B,De]
-        
+
         # 6. 第二个 CDI Injector Norm
         h3 = self.cdir_injector_norm_2(
             h=h2,
@@ -961,36 +969,36 @@ class CDIRecModel(nn.Module):
         # 8. 处理 image 和 text features
         image_features = all_features.get("image_features", None)
         text_features = all_features.get("text_features", None)
-        
+
         if image_features is None or text_features is None:
             raise KeyError("Expected 'image_features' and 'text_features' in all_features.")
-        
+
         image_features = image_features.to(device).float()  # [B, 64]
-        text_features = text_features.to(device).float()    # [B, 64]
-        
+        text_features = text_features.to(device).float()  # [B, 64]
+
         # 为 image 和 text 生成 gate
         gate_image = self.image_gate(z_domain)  # [B, N_image_expert]
-        gate_text = self.text_gate(z_domain)    # [B, N_text_expert]
-        
+        gate_text = self.text_gate(z_domain)  # [B, N_text_expert]
+
         # 9. MoE Experts
         # domain, scenario, task expert 使用经过 Cross-Net 处理后的 h3
-        h_domain = self.domain_expert(h3, gate_domain)          # [B, Dexp]
-        h_scenario = self.scenario_expert(h3, gate_scenario)    # [B, Dexp]
-        h_task = self.task_expert(h3, gate_task)                # [B, Dexp]
+        h_domain = self.domain_expert(h3, gate_domain)  # [B, Dexp]
+        h_scenario = self.scenario_expert(h3, gate_scenario)  # [B, Dexp]
+        h_task = self.task_expert(h3, gate_task)  # [B, Dexp]
         # image 和 text expert 使用原始的特征
-        h_image = self.image_expert(image_features, gate_image) # [B, Dexp]
-        h_text = self.text_expert(text_features, gate_text)     # [B, Dexp]
+        h_image = self.image_expert(image_features, gate_image)  # [B, Dexp]
+        h_text = self.text_expert(text_features, gate_text)  # [B, Dexp]
 
         # 10. 使用可学习的 alpha 进行加权求和
         # 先对 alpha 做 softmax 归一化
         alpha_normalized = F.softmax(self.alpha, dim=0)  # [5]
-        
+
         # 堆叠所有 expert 输出
         expert_outputs = torch.stack([h_domain, h_scenario, h_task, h_image, h_text], dim=1)  # [B, 5, Dexp]
-        
+
         # 加权求和
         h_weighted = (expert_outputs * alpha_normalized.view(1, 5, 1)).sum(dim=1)  # [B, Dexp]
-        
+
         # 11. 第三个 CDI Injector Norm（在加权求和之后）
         h_final = self.cdir_injector_norm_3(
             h=h_weighted,
@@ -1021,9 +1029,4 @@ class CDIRecModel(nn.Module):
         play_prob = torch.sigmoid(logit_play)
         pay_prob = torch.sigmoid(logit_pay)
 
-        return {
-            "loss": loss,
-            "click_prob": click_prob,
-            "play_prob": play_prob,
-            "pay_prob": pay_prob
-        }
+        return loss, click_prob, play_prob, pay_prob

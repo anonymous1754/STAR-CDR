@@ -48,9 +48,9 @@ class FakeDataset(Dataset):
             for col in self.important_features:
                 record[col] = torch.tensor(row[col], dtype=torch.float32)
 
-            self.continuous_features_dim = {col:1 for col in row.index if
-                                        any(d in col for d in ['game', 'video', 'music', 'theme', 'read'])
-                                        and ('_continue_' in col)}
+            self.continuous_features_dim = {col: 1 for col in row.index if
+                                            any(d in col for d in ['game', 'video', 'music', 'theme', 'read'])
+                                            and ('_continue_' in col)}
 
             for col in self.continuous_features_dim.keys():
                 record[col] = torch.tensor(row[col], dtype=torch.float32)
@@ -58,7 +58,7 @@ class FakeDataset(Dataset):
             for col in self.important_features:
                 self.continuous_features_dim[col] = 1
 
-            self.categorical_features = {col:100 for col in row.index if
+            self.categorical_features = {col: 100 for col in row.index if
                                          any(d in col for d in ['game', 'video', 'music', 'theme', 'read'])
                                          and ('_concrete_' in col)}
 
@@ -73,10 +73,10 @@ class FakeDataset(Dataset):
             self.categorical_features['is_play'] = 3
             self.categorical_features['is_pay'] = 3
 
-
             self.sequence_features = [col for col in row.index if '_sequen' in col]
             for col in self.sequence_features:
                 record[col] = np.array(json.loads(row[col]), dtype=np.float32)
+                self.continuous_features_dim[col] = 1
 
             self.data.append(record)
 
@@ -104,18 +104,14 @@ def collate_fn(batch):
     # 取第一个样本，用来识别特征
     sample = batch[0]
 
-    # ======================
     # 1) categorical 特征
-    # ======================
     categorical_keys = [k for k in sample.keys()
                         if (isinstance(sample[k], torch.Tensor) and sample[k].dtype in (torch.int, torch.long))]
 
     for key in categorical_keys:
         batch_out[key] = torch.stack([b[key] for b in batch], dim=0)
 
-    # ======================
     # 2) continuous 特征
-    # ======================
     continuous_keys = [k for k in sample.keys()
                        if (isinstance(sample[k], torch.Tensor) and sample[k].dtype == torch.float32)]
 
@@ -125,13 +121,9 @@ def collate_fn(batch):
     for key in continuous_keys:
         batch_out[key] = torch.stack([b[key] for b in batch], dim=0)
 
-    # ======================
     # 3) sequence 特征（numpy array → padding）
-    # ======================
     sequence_keys = [k for k in sample.keys()
                      if isinstance(sample[k], np.ndarray)]
-
-    from torch.nn.utils.rnn import pad_sequence
 
     for key in sequence_keys:
         seq_list = [torch.tensor(b[key], dtype=torch.float32) for b in batch]
