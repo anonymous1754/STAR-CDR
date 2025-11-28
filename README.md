@@ -9,8 +9,6 @@ This project demonstrates the core structure and operational workflow of the Sta
 This project uses Python version 3.13. First, install the required Python dependency packages:
 
 ```
-# Install dependencies using pip
-
 pip install -r requirements.txt
 ```
 
@@ -19,8 +17,6 @@ pip install -r requirements.txt
 Generate synthetic data that meets configuration requirements by running the script. Data will be automatically saved to the `dataset/`  directory:
 
 ```
-# Execute data generation script
-
 bash run.bash
 ```
 
@@ -31,8 +27,6 @@ Data generation rules are defined by configuration files in the `configs/` direc
 Run the training script to start the model training process:
 
 ```
-# Execute training code
-
 python train.py
 ```
 
