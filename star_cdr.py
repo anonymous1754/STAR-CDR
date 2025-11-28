@@ -595,8 +595,6 @@ class CDIRecModel(nn.Module):
         for feat_name in self.sequence_features:
             if feat_name in self.categorical_features:
                 total_dim += self.categorical_embed_dim
-
-        print(total_dim)
         
         return total_dim
     
@@ -893,7 +891,6 @@ class CDIRecModel(nn.Module):
         
         all_features_concat = torch.cat(feature_parts, dim=-1)  # [B, total_dim]
 
-        print(all_features_concat.shape)
         # 2.5 统一投影到 embed_dim
         h0 = self.preprocess(all_features_concat)  # [B, De]
         h0 = F.relu(h0)
