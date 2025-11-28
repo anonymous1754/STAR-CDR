@@ -8,5 +8,6 @@ python generate_fake_dataset.py \
     --fixed_user_item_k 3 \
     --ratio_noise 0.05 \
     --value_range 0,1 \
+    --concrete_range 0,99 \
     --save_path dataset/my_fake_dataset.csv
 

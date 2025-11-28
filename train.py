@@ -6,6 +6,7 @@ import argparse
 import numpy as np
 from dataloader import FakeDataset, collate_fn
 from collections import defaultdict
+from star_cdr import CDIRecModel
 
 class SimpleModel(nn.Module):
     def __init__(self, fixed_dim, domain_dim):
@@ -227,17 +228,24 @@ def main():
     vali_dataset = FakeDataset(args.csv_file, split='vali')
     test_dataset = FakeDataset(args.csv_file, split='test')
 
+    important_features, categorical_features, continuous_features_dim, sequence_features = train_dataset.get_features()
+
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=0, collate_fn=collate_fn)
     vali_loader = DataLoader(vali_dataset, batch_size=args.batch_size, shuffle=False, num_workers=0, collate_fn=collate_fn)
     test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=0, collate_fn=collate_fn)
+    #
+    # train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=0)
+    # vali_loader = DataLoader(vali_dataset, batch_size=args.batch_size, shuffle=False, num_workers=0)
+    # test_loader = DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=0)
 
-    # 获取维度
-    sample = train_dataset[0]
-    fixed_dim = sample['fixed'].shape[0]
-    domain_dim = sample['domain'].shape[0]
+    # # 获取维度
+    # sample = train_dataset[0]
+    # fixed_dim = sample['fixed'].shape[0]
+    # domain_dim = sample['domain'].shape[0]
 
     # 模型
-    model = SimpleModel(fixed_dim, domain_dim).to(device)
+    # model = SimpleModel(fixed_dim, domain_dim).to(device)
+    model = CDIRecModel(important_features=important_features, categorical_features=categorical_features, continuous_features_dim=continuous_features_dim, sequence_features=sequence_features)
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
     # ------------------ 训练 ------------------
